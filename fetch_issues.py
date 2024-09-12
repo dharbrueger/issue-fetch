@@ -51,42 +51,82 @@ def get_issue_comments(owner, repo, issue_number):
 
 def contains_keyword_in_comments(owner, repo, issue_number, keyword):
     comments = get_issue_comments(owner, repo, issue_number)
-    
     for comment in comments:
         if keyword in comment['body']:
             return True
     return False
 
-# Main function, shows an example of how to use the above functions
 def main():
-    issues = get_issues(REPO_OWNER, REPO_NAME)
+    intent = input("Do you want to export issues for a specific public repository? (yes/no): ").strip().lower()
+
+    if intent == 'no':
+        print("... okay, exiting I guess.")
+        return
     
+    file_name = input("Enter the file name to save the issues (default: issues.csv): ") or 'issues.csv'
+    owner = input("Enter the repository owner: ")
+    repo = input("Enter the repository name: ")
+    state = input("Enter the state of the issues (default: open): ") or 'open'
+    label = input("Enter the label to filter issues (optional): ")
+    sort = input("Enter the sort criteria (default: created): ") or 'created'
+    direction = input("Enter the sort direction (default: desc): ") or 'desc'
+    
+    action = input("Do you want to export all fetched issues or continue searching? (issues/search): ").strip().lower()
+    
+    if action == 'search':
+        print("To continue searching, we must fetch issues first.");
+    
+    print(f"Fetching issues for {owner}/{repo}...")
+    issues = get_issues(owner, repo, state, label, sort, direction)
+    print(f"Total issues: {len(issues)}")
+
     data = []
-    # Example: skip issues that contain a specific keyword in the comments
-    for issue in issues:
-        if contains_keyword_in_comments(REPO_OWNER, REPO_NAME, issue['number'], 'keyword'):
-            print(f"Skipping issue {issue['number']} as it contains keyword.")
-            continue
-        
-        print(f"Processing issue {issue['number']}...")
-        issue_data = {
-            'Issue Number': issue['number'],
-            'Title': issue['title'],
-            'State': issue['state'],
-            'Comments Count': issue['comments'],
-            'Created At': issue['created_at'],
-            'URL': issue['html_url'],
-            #'Body': issue['body'],
-        }
-        data.append(issue_data)
-        print(f"Added issue {issue['number']} to the list.")
+
+    if action == 'search':
+        keyword = input("Currently, we only support searching for a keyword in the comments of all issues. Enter the keyword to search: ")
+        exclude = input("Do you want to exclude issues that contain the keyword? (include/exclude): ").strip().lower()
+
+        for issue in issues:
+            issue_number = issue['number']
+            print(f"Checking issue #{issue_number}...")
+            if exclude == 'exclude':
+                if contains_keyword_in_comments(owner, repo, issue_number, keyword):
+                    print(f"The keyword '{keyword}' was found in the comments of issue #{issue_number}.")
+                    print(f"Excluding issue #{issue_number}...")
+                    continue
+                else:
+                    print(f"The keyword '{keyword}' was not found in the comments of issue #{issue_number}.")
+                    print(f"Including issue #{issue_number}...")
+                    data.append({
+                        'Issue Number': issue_number,
+                        'Title': issue['title'],
+                        #'Body': issue['body'],
+                    })
+            else:
+                if contains_keyword_in_comments(owner, repo, issue_number, keyword):
+                    print(f"The keyword '{keyword}' was found in the comments of issue #{issue_number}.")
+                    print(f"Including issue #{issue_number}...")
+                    data.append({
+                        'Issue Number': issue_number,
+                        'Title': issue['title'],
+                        #'Body': issue['body'],
+                    })
+                else:
+                    print(f"The keyword '{keyword}' was not found in the comments of issue #{issue_number}.")
+                    print(f"Excluding issue #{issue_number}...")
+                    continue
+    else:
+        issues = get_issues(owner, repo, state, label, sort, direction)
+        for issue in issues:
+            data.append({
+                'Issue Number': issue['number'],
+                'Title': issue['title'],
+                #'Body': issue['body'],
+            })
     
     df = pd.DataFrame(data)
-    
-    if not df.empty:
-        df.to_csv('issues.csv', index=False)
-    else:
-        print("No matching issues found.")
-
+    df.to_csv(file_name, index=False)
+    print(f"Exported issues to {file_name}")
+            
 if __name__ == '__main__':
     main()

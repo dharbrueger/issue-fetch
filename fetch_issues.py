@@ -136,6 +136,21 @@ def interactive_wizard():
     df.to_csv(file_name, index=False)
     print(f"Exported issues to {file_name}")
 
+    generate_json = input("Do you want to generate a JSON file with the provided arguments from the wizard? (yes/no): ").strip().lower()
+    if generate_json == 'yes' or generate_json == 'y':
+        data = {
+            'owner': owner,
+            'repo': repo,
+            'state': state,
+            'label': label,
+            'sort': sort,
+            'direction': direction,
+            'file_name': file_name,
+        }
+
+        with open('data.json', 'w') as file:
+            json.dump(data, file)
+
 def fetch_issues_with_args():
     if len(sys.argv) != 2:
         print("Please provide the path to the JSON file as the only argument.")

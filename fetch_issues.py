@@ -1,7 +1,10 @@
 import requests
 import os
 import pandas as pd
+import argparse
 from dotenv import load_dotenv
+import sys
+import json
 
 load_dotenv()
 
@@ -56,14 +59,46 @@ def contains_keyword_in_comments(owner, repo, issue_number, keyword):
             return True
     return False
 
-def main():
-    intent = input("Do you want to export issues for a specific public repository? (yes/no): ").strip().lower()
-
-    if intent == 'no':
-        print("... okay, exiting I guess.")
-        return
+def search_issues(owner, repo, keyword, exclude=False):
+    issues = get_issues(owner, repo)
+    data = []
     
-    file_name = input("Enter the file name to save the issues (default: issues.csv): ") or 'issues.csv'
+    for issue in issues:
+        issue_number = issue['number']
+        print(f"Checking issue #{issue_number}...")
+        if exclude:
+            if contains_keyword_in_comments(owner, repo, issue_number, keyword):
+                print(f"The keyword '{keyword}' was found in the comments of issue #{issue_number}.")
+                print(f"Excluding issue #{issue_number}...")
+                continue
+            else:
+                print(f"The keyword '{keyword}' was not found in the comments of issue #{issue_number}.")
+                print(f"Including issue #{issue_number}...")
+                data.append({
+                    'Issue Number': issue_number,
+                    'Title': issue['title'],
+                    #'Body': issue['body'],
+                })
+        else:
+            if contains_keyword_in_comments(owner, repo, issue_number, keyword):
+                print(f"The keyword '{keyword}' was found in the comments of issue #{issue_number}.")
+                print(f"Including issue #{issue_number}...")
+                data.append({
+                    'Issue Number': issue_number,
+                    'Title': issue['title'],
+                    #'Body': issue['body'],
+                })
+            else:
+                print(f"The keyword '{keyword}' was not found in the comments of issue #{issue_number}.")
+                print(f"Excluding issue #{issue_number}...")
+                continue
+    
+    return data
+
+def interactive_wizard():
+    print("Welcome to the GitHub Issues Fetcher!")
+
+    file_name = input("Enter the file name to export the data in (default: issue_data.csv): ") or 'issue_data.csv'
     owner = input("Enter the repository owner: ")
     repo = input("Enter the repository name: ")
     state = input("Enter the state of the issues (default: open): ") or 'open'
@@ -87,34 +122,7 @@ def main():
         exclude = input("Do you want to exclude issues that contain the keyword? (include/exclude): ").strip().lower()
 
         for issue in issues:
-            issue_number = issue['number']
-            print(f"Checking issue #{issue_number}...")
-            if exclude == 'exclude':
-                if contains_keyword_in_comments(owner, repo, issue_number, keyword):
-                    print(f"The keyword '{keyword}' was found in the comments of issue #{issue_number}.")
-                    print(f"Excluding issue #{issue_number}...")
-                    continue
-                else:
-                    print(f"The keyword '{keyword}' was not found in the comments of issue #{issue_number}.")
-                    print(f"Including issue #{issue_number}...")
-                    data.append({
-                        'Issue Number': issue_number,
-                        'Title': issue['title'],
-                        #'Body': issue['body'],
-                    })
-            else:
-                if contains_keyword_in_comments(owner, repo, issue_number, keyword):
-                    print(f"The keyword '{keyword}' was found in the comments of issue #{issue_number}.")
-                    print(f"Including issue #{issue_number}...")
-                    data.append({
-                        'Issue Number': issue_number,
-                        'Title': issue['title'],
-                        #'Body': issue['body'],
-                    })
-                else:
-                    print(f"The keyword '{keyword}' was not found in the comments of issue #{issue_number}.")
-                    print(f"Excluding issue #{issue_number}...")
-                    continue
+            search_issues(owner, repo, keyword, exclude)
     else:
         issues = get_issues(owner, repo, state, label, sort, direction)
         for issue in issues:
@@ -127,6 +135,94 @@ def main():
     df = pd.DataFrame(data)
     df.to_csv(file_name, index=False)
     print(f"Exported issues to {file_name}")
-            
+
+def fetch_issues_with_args():
+    if len(sys.argv) != 2:
+        print("Please provide the path to the JSON file as the only argument.")
+        return
+
+    json_file_path = sys.argv[1]
+
+    if not os.path.isfile(json_file_path):
+        print(f"The file {json_file_path} does not exist.")
+        return
+
+    with open(json_file_path, 'r') as file:
+        data = json.load(file)
+
+    owner = data.get('owner')
+    repo = data.get('repo')
+    state = data.get('state', 'open')
+    label = data.get('label', '')
+    sort = data.get('sort', 'created')
+    direction = data.get('direction', 'desc')
+    file_name = data.get('file_name', 'issues.csv')
+
+    print(sys.argv[0])
+    print(sys.argv[1])
+    print(f"Fetching issues for {owner}/{repo}...")
+
+    issues = get_issues(owner, repo, state, label, sort, direction)
+    print(f"Total issues: {len(issues)}")
+
+    issue_data = []
+
+    for issue in issues:
+        issue_data.append({
+            'Issue Number': issue['number'],
+            'Title': issue['title'],
+            #'Body': issue['body'],
+        })
+
+    df = pd.DataFrame(issue_data)
+    df.to_csv(file_name, index=False)
+    print(f"Exported issues to {file_name}")
+
+
+def main():
+    if len(sys.argv) != 2:
+        need_data_template = input("Do you want a data template generated for you? (yes/no): ").strip().lower()
+
+        if need_data_template == 'yes' or need_data_template == 'y':
+            print("Generating data template...")
+            print("Please fill in the required fields in the generated JSON file.")
+            print("You can then run the script with the path to the JSON file as the only argument.")
+            data = {
+                'owner': 'Azure',
+                'repo': 'azure-sdk-for-net',
+                'state': 'open',
+                'label': 'bug',
+                'sort': 'created',
+                'direction': 'desc',
+                'file_name': 'example_data_template.csv',
+            }
+
+            with open('example_data.json', 'w') as file:
+                json.dump(data, file)
+
+            return
+
+
+    GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+    if GITHUB_TOKEN is None:
+        print("Please set the GITHUB_TOKEN environment variable.")
+        return
+
+    if len(sys.argv) > 1:
+        fetch_issues_with_args()
+        return
+
+    intent = input("Do you want to use the interactive wizard? (yes/no): ").strip().lower()
+
+    if intent not in ['yes', 'no']:
+        print("Invalid input. Please enter 'yes' or 'no'.")
+        return
+
+    if intent == 'yes':
+        interactive_wizard()
+    else:
+        print("Please provide the required arguments.")
+        return
+
 if __name__ == '__main__':
     main()
